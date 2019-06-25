@@ -305,9 +305,12 @@ def f_ce(param):
     return res, param
               
 def f_ce_dx(param):
-    res =  np.concatenate( ( [f_fv_dx(param)] ,
-                             [f_fa_dx(param)] ,
-                             [f_fj_dx(param)] ) , axis = 0 )
+    fv_dx = f_fv_dx(param)
+    fa_dx = f_fa_dx(param)
+    fj_dx = f_fj_dx(param)
+    res =  np.concatenate( ( [fv_dx] ,
+                             [fa_dx] ,
+                             [fj_dx] ) , axis = 0 )
     return res, param
              
 def f_ci(param):
@@ -333,11 +336,11 @@ def f_ci(param):
 def f_ci_dx(param):
     p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5 = param
     
-    df1 = f_f1_dx(param)
-    df2 = f_f2_dx(param)
-    df3 = f_f3_dx(param)
-    df4 = f_f4_dx(param)
-    df5 = f_f5_dx(param)
+    df1, param = f_f1_dx(param)
+    df2, param = f_f2_dx(param)
+    df3, param = f_f3_dx(param)
+    df4, param = f_f4_dx(param)
+    df5, param = f_f5_dx(param)
     
     lf = [(m1, df1),
           (m2, df2),
@@ -352,13 +355,17 @@ def f_ci_dx(param):
     return res, param
                                   
 def f_c(param):
-    res =  np.concatenate( ( f_ce(param) ,
-                             f_ci(param) ), axis = 0 )
+    ce, param = f_ce(param)
+    ci, param = f_ci(param)
+    res =  np.concatenate( ( ce ,
+                             ci ), axis = 0 )
     return res, param
 
 def f_c_dx(param):
-    res =  np.concatenate( ( f_ce_dx(param) , 
-                             f_ci_dx(param) ), axis = 0 )
+    ce_dx = f_ce_dx(param)
+    ci_dx = f_ci_dx(param)
+    res =  np.concatenate( ( ce_dx , 
+                             ci_dx ), axis = 0 )
     return res, param
                                       
              
@@ -380,16 +387,38 @@ def f_L_dx(param):
     lilist = list(map(lambda y:y[1], filter(lambda x:x[0], lf)))
     
     li = np.array(li).reshape((1,len(lilist)))
-    return ( s_dx  +
+    res =  ( s_dx  +
              le.dot(ce_dx) +
              li.dot(ci_dx)   )[0]
+    return res, param
              
 
 
 def f_L_d2x(param):
+
+    p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5 = param
+    
     res = np.zeros((3,3))
     
-    return res
+    fv_d2x, param = f_fv_d2x(param)
+    fa_d2x, param = f_fa_d2x(param)
+    fj_d2x, param = f_fj_d2x(param)
+    
+    res += ( fv_d2x +
+             fa_d2x +
+             fj_d2x )
+    
+    lf = ((m1, l1, f_f1_d2x),
+          (m2, l2, f_f2_d2x),
+          (m3, l3, f_f3_d2x),
+          (m4, l4, f_f4_d2x),
+          (m5, l5, f_f5_d2x))
+
+    res += reduce(lambda y0,y1:y0+y1, 
+                  map(lambda y:y[1]*y[2](param)[0], 
+                      filter(lambda x:x[0], lf)))
+    
+    return res, param
     
 init_param = (1e-1,) * 16
 p5, p4, lv, la, lj, l1, l2, l3, l4, l5, T, m1, m2, m3, m4, m5 = init_param
@@ -402,15 +431,15 @@ Ts = get_powers(T, 5)
 #print(Ts)
 param = (p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5)
 
-L_dx = f_L_dx(param)
-c = f_c(param)
+c, param = f_c(param)
+L_dx, param = f_L_dx(param)
 #print("L_dx=",L_dx)
 b = np.concatenate( ( -L_dx,
                       -c ), axis = 0 )
 #print("b=",b)
               
-L_d2x = f_L_d2x(param)
-c_dx = f_c_dx(param)
+L_d2x, param = f_L_d2x(param)
+c_dx, param = f_c_dx(param)
 #print(c_dx)
 #print(L_d2x.shape, c_dx.shape)
 A_0 = np.concatenate( ( L_d2x, c_dx.T         ), axis = 1 )
