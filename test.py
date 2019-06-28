@@ -32,6 +32,8 @@ clr = Color()
 result_found = False
 
 def plot_fva():
+    if(not fva_list):
+        return
     fva_list_a = np.array(fva_list).T
     print(fva_list_a)
     #plt.cla()
@@ -58,6 +60,8 @@ def plot_fva():
 
 
 def plot_t():
+    if(not t_list):
+        return
     fig = plt.figure()
     ax = fig.add_subplot(1,1,1)
     #plt.autoscale()
