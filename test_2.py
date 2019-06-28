@@ -5,6 +5,7 @@ import mpmath
 import sys
 from hl import Color
 import matplotlib.animation as ani
+from collections import Iterable
 
 clr = Color()
 
@@ -31,7 +32,7 @@ class StaticParam(object):
         self.p2 = self.a0/2.0
         self.p3 = j0/6.0
         
-        self.threshold = 1e-2
+        self.threshold = 1e-10
         
 
 class Param(object):
@@ -42,6 +43,46 @@ class Param(object):
     nce = ["v","a"]
     nci = ["1","2","3","4"]
     
+    
+    class DummyList(object):
+        '''Access other stuffs with callbacks and a bracket-get-set way'''
+        def __init__(self):
+            self.get_cb = []
+            self.set_cb = []
+            self.counter = 0
+            
+        def register_item_cb(self, index, 
+                             getcb, setcb):
+            if(index!=self.counter):
+                raise AssertionError("index(%d) != self.counter(%d)"
+                                     ""%(index, self.counter))
+            else:
+                self.counter += 1
+            #self.get_cb[index] = getcb
+            #self.set_cb[index] = setcb
+            self.get_cb.append( getcb )
+            self.set_cb.append( setcb )
+            
+        def __getitem__(self, slice):
+            #print("get %s %s"%(slice))
+            funs = self.get_cb[slice]
+            if(not isinstance(funs, list)):
+                return funs()
+            else:
+                return list(map(lambda x:x(),funs))
+            
+        def __setitem__(self, slice, values):
+            funs = self.set_cb[slice]
+            
+            if(not isinstance(funs, list)):
+                funs = [funs]
+            if(not isinstance(values, Iterable)):
+                values = [values]
+            
+            for i in range(len(funs)):
+                funs[i](values[i])
+            
+            
     def __init__(self, *args):
         #print("construct: %s"%(repr(args)))
         self.init_empty()
@@ -55,14 +96,134 @@ class Param(object):
             return
             
     def init_empty(self):
+        self.attr_override = {}
+        
         self.p5 = 0.0
         self.p4 = 0.0
         self.set_T(0.0)
         
-        self.lce = [0.0]*2
-        self.lci = [0.0]*4
+        self.la = 0.0
+        self.lv = 0.0
         
+        self.l1 = 0.0
+        self.l2 = 0.0
+        self.l3 = 0.0
+        self.l4 = 0.0
+        
+        getlv = lambda:self.lv
+        getla = lambda:self.la
+        
+        getl1 = lambda:self.l1
+        getl2 = lambda:self.l2
+        getl3 = lambda:self.l3
+        getl4 = lambda:self.l4
+        
+        def setlv(x): self.lv = x
+        def setla(x): self.la = x
+        
+        def setl1(x): self.l1 = x
+        def setl2(x): self.l2 = x
+        def setl3(x): self.l3 = x
+        def setl4(x): self.l4 = x
+        
+        self.lce = Param.DummyList()
+        self.lce.register_item_cb(0, getlv, setlv)
+        self.lce.register_item_cb(1, getla, setla)
+        
+        self.lci = Param.DummyList()
+        self.lci.register_item_cb(0, getl1, setl1)
+        self.lci.register_item_cb(1, getl2, setl2)
+        self.lci.register_item_cb(2, getl3, setl3)
+        self.lci.register_item_cb(3, getl4, setl4)
             
+        self.attr_override["lce"] = {"post_proc": lambda x:x[::]}
+        self.attr_override["lci"] = {"post_proc": lambda x:x[::]}
+        self.attr_override["lce__"] = {"alter_name":"lce"}
+        self.attr_override["lci__"] = {"alter_name":"lci"}
+        
+    def __delattr__(self, *args, **kwargs):
+        print('delattr(%s,%s), do nothing'%(args,kwargs))
+        #return object.__delattr__(self, *args, **kwargs)
+        return None
+
+    def __getattribute__(self, *args, **kwargs):
+        name = args[0]
+        #print("getattr: (%s)"%(args))
+        #print("(%s)=='lce'"%(name=="lce"))
+        #print("(%s)=='lci'"%(name=="lci"))
+        #print("wtf?"*10)
+        
+        if(isinstance(name, str)):
+            
+            attr_override = {}
+            try:
+                attr_override = object.__getattribute__(self, "attr_override")
+                #print(type(attr_override))
+            except AttributeError as e:
+                pass
+            
+            if (name in attr_override):
+                o = attr_override[name]
+                if("alter_name" in o):
+                    alter_name = o["alter_name"]
+                else:
+                    alter_name = name
+                    
+                res = object.__getattribute__(self, alter_name)
+                
+                if("post_proc" in o):
+                    return attr_override[name]["post_proc"](res)
+                else:
+                    return res
+            else:
+                res = object.__getattribute__(self, *args, **kwargs)
+                return res
+        return res
+        
+        
+    def __setattr__(self, *args, **kwargs):
+        #print('setattr(%s,%s)'%(args,kwargs))
+        name, obj = args
+        if(name == "lce"):
+            if(not hasattr(self,name)):
+                return object.__setattr__(self, *args, **kwargs)
+            else:
+                clr.print_red_text("resetting lce as (%s)"%(repr(obj)))
+                if(isinstance(obj,Iterable)):
+                    if(len(obj) != self.lce__.counter):
+                        clr.print_red_text("object(%s) to reset has invalid "
+                                           "length(%d), should be (%d). "
+                                           "do nothing."
+                                           ""%(repr(obj), len(obj), self.lce__.counter))
+                        return None
+                    else:
+                        self.lce__[::] = obj
+                else:
+                    clr.print_red_text("object(%s) to reset is not iterable, "
+                                       "do nothing"%(repr(obj)))
+                    return None
+        
+        elif(name == "lci"):
+            if(not hasattr(self,name)):
+                return object.__setattr__(self, *args, **kwargs)
+            else:
+                clr.print_red_text("resetting lci as (%s)"%(repr(obj)))
+                if(isinstance(obj,Iterable)):
+                    if(len(obj) != self.lci__.counter):
+                        clr.print_red_text("object(%s) to reset has invalid "
+                                           "length(%d), should be (%d). "
+                                           "do nothing."
+                                           ""%(repr(obj), len(obj), self.lci__.counter))
+                        return None
+                    else:
+                        self.lci__[::] = obj
+                else:
+                    clr.print_red_text("object(%s) to reset is not iterable, "
+                                       "do nothing"%(repr(obj)))
+                    return None
+        else:
+            return object.__setattr__(self, *args, **kwargs)
+        
     def init_param(self, p):
         self.copy_from(p)
         
@@ -71,8 +232,13 @@ class Param(object):
         self.p4 = p.p4
         self.set_T(p.get_T())
         
-        self.lce = p.lce[::]
-        self.lci = p.lci[::]
+        self.lv = p.lv
+        self.la = p.la
+        self.l1 = p.l1
+        self.l2 = p.l2
+        self.l3 = p.l3
+        self.l4 = p.l4
+        
         
     def init_each(self, args):
         p5, p4, T, lv, la, l1, l2, l3, l4 = args
@@ -81,8 +247,12 @@ class Param(object):
         self.p4 = p4
         self.set_T(T)
         
-        self.lce = [lv, la]
-        self.lci = [l1, l2, l3, l4]
+        self.lv = lv
+        self.la = la
+        self.l1 = l1
+        self.l2 = l2
+        self.l3 = l3
+        self.l4 = l4
         
     def set_T(self, T):
         self.__T = T
@@ -103,13 +273,50 @@ class Param(object):
                 "lv=%lf, la=%lf, "
                 "l1=%lf, l2=%lf, l3=%lf, l4=%lf )"
                 ""%(self.p5, self.p4,
-                    self.lce[0], self.lce[1],
-                    self.lci[0], self.lci[1], self.lci[2], self.lci[3]))
+                    self.lv, self.la,
+                    self.l1, self.l2, self.l3, self.l4))
           
     def copy(self):
         return Param(self)
         
-class poly_vel_profile(object):
+        
+        
+        
+        
+        
+        
+        
+class PolyVelProfile(object):
+
+    class RegionEnumType(object):
+        '''Immutable enumerations'''
+        __INSIDE = -1
+        __ON_EDGE = 0
+        __OUTSIDE = 1
+        
+        @property
+        def INSIDE(self):
+            return type(self).__INSIDE
+        @property
+        def ON_EDGE(self):
+            return type(self).__ON_EDGE
+        @property
+        def OUTSIDE(self):
+            return type(self).__OUTSIDE
+        
+        @classmethod
+        def __setattr__(cls, *args, **kwargs):
+            return
+        def __str__(self):
+            return self.__repr__()
+        def __repr__(self):
+            return ("INSIDE(%s) ON_EDGE(%s) OUTSIDE(%s)"
+                    ""%(PolyVelProfile.RegionEnum.INSIDE,
+                        PolyVelProfile.RegionEnum.ON_EDGE,
+                        PolyVelProfile.RegionEnum.OUTSIDE))
+                        
+    RegionEnum = RegionEnumType()
+
     def __init__(self):
         sp = StaticParam()
         sp.v0 = 0.0
@@ -126,7 +333,7 @@ class poly_vel_profile(object):
         sp.p2 = sp.a0/2.0
         sp.p3 = j0/6.0
         
-        sp.threshold = 1e-2
+        sp.threshold = 1e-10
         
         self.static_param = sp
         
@@ -134,8 +341,8 @@ class poly_vel_profile(object):
         
         self.ci_mask = [1] * 4  # 1 for activated, 0 for deactivated
         
-    def get_n_ci_activated(self):
-        return len(list(filter(lambda x:x, self.ci_mask)))
+    def get_n_ci_activated(self, masks):
+        return len(list(filter(lambda x:x, masks)))
         
         
     def f_s(self, v):
@@ -199,9 +406,6 @@ class poly_vel_profile(object):
                       s.p1         - 
                       s.v1           )
         
-        if np.abs(res)>=threshold:
-            #err_handle()
-            clr.print_red_text("fv()=%20.18lf, should be 0."%(res))
         return res
                                       
                                       
@@ -243,10 +447,6 @@ class poly_vel_profile(object):
                   6 * s.p3 * Ts[1] +
                   2 * s.p2          )
         
-        if np.abs(res)>=threshold:
-            #la = 0
-            #err_handle()
-            clr.print_red_text("fa()=%20.18lf, should be 0."%(res))
         return res
 
     def f_fa_dx(self, v):
@@ -275,64 +475,19 @@ class poly_vel_profile(object):
                            [ fa_dTdp5, fa_dTdp4, fa_d2T   ] ] )
         return res
 
-    def f_fj(self, v):
-        s = self.static_param
-        Ts = v.get_Ts()
-        
-        res =  ( 20 * v.p5 * Ts[2] +
-                 24 * v.p4 * Ts[1] +
-                  6 * s.p3           )
-        if res!=0:
-            #lj = 0
-            #err_handle()
-            clr.print_red_text("fj()=%lf, should be 0."%(res))
-        return res
-
-    def f_fj_dx(self, v):
-        s = self.static_param
-        Ts = v.get_Ts()
-        
-        res =  np.array( [ 20 * Ts[2],
-                           24 * Ts[1],
-                           (     40 * v.p5 * Ts[1] +
-                                 24 * v.p4           ) ])
-        return res
-
-        
-    def f_fj_d2x(self, v):
-        s = self.static_param
-        Ts = v.get_Ts()
-        
-        fj_dTdp5 =       40        * Ts[1]
-        fj_dTdp4 =       24
-        fj_d2T   = (     40 * v.p5           )
-        
-        # the Hessian matrix is symmetric
-        res =  np.array( [ [        0,        0, fj_dTdp5 ] ,
-                           [        0,        0, fj_dTdp4 ] ,
-                           [ fj_dTdp5, fj_dTdp4, fj_d2T   ] ] )
-        return res
-
         
     def f_f1(self, v):
         s = self.static_param
         Ts = v.get_Ts()
         
-        mask = 1
         res =  ( 30 * v.p5 * Ts[1] +
                  24 * v.p4          )
-        if res!=0:
-            if res > 0:
-                clr.print_red_text("f1=%32.30lf > 0"%res)
-            l1 = 0
-            mask = 0
-        
-        self.ci_mask[0] = mask
         return res
 
     def f_f1_dx(self, v):
         s = self.static_param
         Ts = v.get_Ts()
+        
         res =  np.array( [ 30 * Ts[1],
                            24,
                            (     30 * v.p5           ) ])
@@ -341,6 +496,7 @@ class poly_vel_profile(object):
     def f_f1_d2x(self, v):
         s = self.static_param
         Ts = v.get_Ts()
+        
         f1_dTdp5 =       30
         f1_dTdp4 =        0
         f1_d2T   = (      0                )
@@ -355,27 +511,25 @@ class poly_vel_profile(object):
     def f_f2(self, v):
         s = self.static_param
         Ts = v.get_Ts()
-        mask = 1
+        
         res =  ( Ts[2] - s.T1*Ts[1] )
-        if res!=0:
-            if res > 0:
-                clr.print_red_text("f2=%32.30lf > 0"%res)
-            l3 = 0
-            mask = 0
-        self.ci_mask[1] = mask
         return res
 
+        
     def f_f2_dx(self, v):
         s = self.static_param
         Ts = v.get_Ts()
+        
         res =  np.array( [  0,
                             0,
                             2*Ts[1] - s.T1 ])
         return res
 
+        
     def f_f2_d2x(self, v):
         s = self.static_param
         Ts = v.get_Ts()
+        
         f2_dTdp5 =        0
         f2_dTdp4 =        0
         f2_d2T   = (      2                )
@@ -385,34 +539,32 @@ class poly_vel_profile(object):
                            [        0,        0, f2_dTdp4 ] ,
                            [ f2_dTdp5, f2_dTdp4, f2_d2T   ] ] )
         return res
-                  
+        
+        
     def f_f3(self, v):
         s = self.static_param
         Ts = v.get_Ts()
-        m4 = 1
-        s_res, param = self.f_s(v)
+        
+        s_res = self.f_s(v)
         res =  ( s_res -
                  1/2.0 * s1     )
-        if res!=0:
-            if res > 0:
-                clr.print_red_text("f3=%32.30lf > 0"%res)
-            l4 = 0
-            m4 = 0
-        param = p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5, ni
         return res
-                           
+        
+        
     def f_f3_dx(self, v):
-        res, param =  f_s_dx(param)
+        res = self.f_s_dx(v)
         return res
 
+        
     def f_f3_d2x(self, v):
-        res, param = f_s_d2x(param)
+        res = self.f_s_d2x(v)
         return res
-                               
+        
+        
     def f_f4(self, v):
         s = self.static_param
         Ts = v.get_Ts()
-        m5 = 1
+        
         def f4(p5):
             return ( 15/8.0 * v.p5 * Ts[3] +
                           3 * v.p4 * Ts[2] +
@@ -420,42 +572,13 @@ class poly_vel_profile(object):
                           2 * s.p2         - 
                               a_max        )
         res = f4(p5)
-        print("-----------0 f_f4()  p5=%32.30lf   res=%32.30lf\n"%(p5, res))
-                              
-        if res > 0:
-        
-            #p5 = (a_max - 2*p2 - 3*p3*Ts[1] - 3*p4*Ts[2]) / (15/8.0*Ts[3])
-        
-            #clr.print_red_text("f4=%32.30lf > 0"%res)
-            #counter = 0
-            while np.abs(res) > 1e-13 and res > 0 and False:
-                dp5 = -res / (15/8.0*Ts[3])
-                v.p5 += dp5
-                #counter += 1
-                res = f4()
-                print("************** f_f4()  p5=%32.30lf   res=%32.30lf\n"%(p5, res))
-                #if(counter >= 3):
-                #    sys.exit(0)
-            else:
-                pass
-                #sys.exit(0)
-            res = f4(p5)
-            print("-----------1 f_f4()  p5=%32.30lf   res=%32.30lf\n"%(p5, res))
-                
-                          
-        if np.abs(res) > 1e-7:
-            if res > 0:
-                clr.print_red_text("f4=%32.30lf > 0"%res)
-            l5 = 0
-            m5 = 0
-            #clr.print_red_text
-        print("f_f4()  m5=%s"%(repr(m5)))
-        param = p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5, ni
         return res
 
+        
     def f_f4_dx(self, v):
         s = self.static_param
         Ts = v.get_Ts()
+        
         res =  np.array( [ 15/8.0 * Ts[3],
                            3 * Ts[2],
                            ( 45/8.0 * v.p5 * Ts[2] +
@@ -463,9 +586,11 @@ class poly_vel_profile(object):
                                   3 * s.p3           ) ])
         return res
 
+        
     def f_f4_d2x(self, v):
         s = self.static_param
         Ts = v.get_Ts()
+        
         f4_dTdp5 =   45/8.0 * Ts[2]
         f4_dTdp4 =        6 * Ts[1]
         f4_d2T   = ( 45/4.0 * v.p5 * Ts[1] +
@@ -476,35 +601,36 @@ class poly_vel_profile(object):
                            [        0,        0, f4_dTdp4 ] ,
                            [ f4_dTdp5, f4_dTdp4, f4_d2T   ] ] )
         return res
-                      
+        
+        
     def f_ce(self, v):
 
         # fv, fa, fj must be 0, as they are all equality constraints
-        fv, param = f_fv(param)
-        fa, param = f_fa(param)
-        #fj, param = f_fj(param)
+        fv = self.f_fv(v)
+        fa = self.f_fa(v)
+        #fj, param = self.f_fj(param)
         
-        print("fv=%lf fa=%lf\n"
-              ""%(fv, fa))
-        fva_list.append([fv,fa])
+        #print("fv=%lf fa=%lf\n"
+        #      ""%(fv, fa))
+              
+        res = np.array([fv, fa])
+              
+        #fva_list.append([fv,fa])
         
-        if(any(map(lambda x:np.abs(x)>=threshold,
-                   [fv,
-                    fa,
-                    #fj
-                       ]))):
-            #err_handle()
-            clr.print_red_text("fv, fa=(%lf, %lf)"
-                                 ", should be all 0."%(fv, fa))
+        #if(any(map(lambda x:np.abs(x)>=threshold,
+        #           res))):
+        #    #err_handle()
+        #    clr.print_red_text("fv, fa=(%lf, %lf)"
+        #                       ", should be all 0."%(fv, fa))
         
-        res =  np.array( [ 0, 0 ] )
+        #res =  np.array( [ 0, 0 ] )
         return res
+                  
                   
     def f_ce_dx(self, v):
 
-        fv_dx, param = f_fv_dx(param)
-        fa_dx, param = f_fa_dx(param)
-        #fj_dx, param = f_fj_dx(param)#
+        fv_dx = self.f_fv_dx(v)
+        fa_dx = self.f_fa_dx(v)
         res =  np.concatenate( ( [fv_dx] ,
                                  [fa_dx] ,
                                  #[fj_dx] 
@@ -512,20 +638,20 @@ class poly_vel_profile(object):
         return res
 
         
-    def f_ci(self, v):
-        
-        f1, param = f_f1(param)
-        f2, param = f_f2(param)
-        f3, param = f_f3(param)
-        f4, param = f_f4(param)
+    def f_ci(self, v, mask=None):
         
         s = self.static_param
         Ts = v.get_Ts()
         
-        print("f_ci()  f1=%lf f2=%lf f3=%lf f4=%lf"
-              ""%(f1, f2, f3, f4))
-        print("f_ci()  m1=%d m2=%d m3=%d m4=%d m5=%d\n"
-              ""%(m1, m2, m3, m4))
+        f1 = self.f_f1(v)
+        f2 = self.f_f2(v)
+        f3 = self.f_f3(v)
+        f4 = self.f_f4(v)
+        
+        #print("f_ci()  f1=%lf f2=%lf f3=%lf f4=%lf"
+        #      ""%(f1, f2, f3, f4))
+        #print("f_ci()  m1=%d m2=%d m3=%d m4=%d\n"
+        #      ""%mask)
         
         #lf = [(l1, f1),
         #      (l2, f2),
@@ -534,58 +660,70 @@ class poly_vel_profile(object):
         
         # still, they should all be zero, normally.
         
-        ni,param = get_ni(param)
-        
-        print("f_ci()  f1=%lf f2=%lf f3=%lf f4=%lf"
-              ""%(f1, f2, f3, f4))
-        print("f_ci()  m1=%d m2=%d m3=%d m4=%d\n"
-              ""%(m1, m2, m3, m4))
-        
-        if(ni):
-            fs = [0] * ni
-        else:
+        if(mask):
             fs = []
-        
+            if(mask[0]):
+                fs.append(f1)
+            if(mask[1]):
+                fs.append(f2)
+            if(mask[2]):
+                fs.append(f3)
+            if(mask[3]):
+                fs.append(f4)
+        else:
+            fs = [f1, f2, f3, f4]
+            
         #print_param(param)
         
         res =  np.array( fs )
         
-        param = p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5, ni
         return res
         
         
-    def f_ci_dx(self, v):
+    def f_ci_dx(self, v, mask=None):
 
-        df1, param = f_f1_dx(param)
-        df2, param = f_f2_dx(param)
-        df3, param = f_f3_dx(param)
-        df4, param = f_f4_dx(param)
+        df1 = self.f_f1_dx(v)
+        df2 = self.f_f2_dx(v)
+        df3 = self.f_f3_dx(v)
+        df4 = self.f_f4_dx(v)
+       
         
-        ni,param = get_ni(param)
-        
-        if(ni):
-            s = self.static_param
-            Ts = v.get_Ts()
-            
-            lf = [(m1, df1),
-                  (m2, df2),
-                  (m3, df3),
-                  (m4, df4)]
-            
-            ci_dx = list(map(lambda y:[y[1]],filter(lambda x:x[0],lf)))
-            
-            res =  np.concatenate( ( ci_dx ) , axis = 0 )
+        if(not mask):
+            ci_dx = ([[df1],
+                      [df2],
+                      [df3],
+                      [df4]])
         else:
-            res =  np.array([[]])
-                                 
+            ni = self.get_n_ci_activated(mask)
+            if(not ni):
+                ci_dx = None
+            else:
+                ci_dx = []
+                if(mask[0]):
+                    ci_dx.append([df1])
+                if(mask[1]):
+                    ci_dx.append([df2])
+                if(mask[2]):
+                    ci_dx.append([df3])
+                if(mask[3]):
+                    ci_dx.append([df4])
+                
+        if(not ci_dx):
+            res = np.array([[]])
+        else:
+            res =  np.concatenate( ( ci_dx ) , axis = 0 )
+                                
         return res
-                                      
-    def f_c(self, v):
-        ce, param = f_ce(param)
-        ci, param = f_ci(param)
+            
+            
+    def f_c(self, v, imask=None):
+        ce = self.f_ce(v)
+        ci = self.f_ci(v,imask)
         
-        ni,param = get_ni(param)
-        #print(ce, ci, ni)
+        if(imask):
+            ni = self.get_n_ci_activated(imask)
+        else:
+            ni = 4
         
         if(ni):
             res =  np.concatenate( ( ce ,
@@ -593,20 +731,22 @@ class poly_vel_profile(object):
         else:
             res =  ce
             
-        s = self.static_param
-        Ts = v.get_Ts()
         print("f_c()  m1=%d m2=%d m3=%d m4=%d\n"
-              ""%(m1, m2, m3, m4))
+              ""%imask)
             
             
         return res
 
-    def f_c_dx(self, v):
-        ce_dx, param = f_ce_dx(param)
-        ci_dx, param = f_ci_dx(param)
+    def f_c_dx(self, v, imask=None):
+        ce_dx = self.f_ce_dx(v)
+        ci_dx = self.f_ci_dx(v,imask)
         
-        ni,param = get_ni(param)
-        print("f_c_dx() ", ce_dx, ci_dx)
+        if(imask):
+            ni = self.get_n_ci_activated(imask)
+        else:
+            ni = 4
+        
+        print("f_c_dx() =========\n%s\n%s"%(ce_dx, ci_dx))
         if(ni):
             res =  np.concatenate( ( ce_dx , 
                                      ci_dx ), axis = 0 )
@@ -616,13 +756,11 @@ class poly_vel_profile(object):
         return res
                                           
                  
-    def f_L_dx(self, v):
+    def f_L_dx(self, v, imask=None):
 
-
-
-        s_dx, param  = f_s_dx(param)
-        ce_dx, param  = f_ce_dx(param)
-        ci_dx, param  = f_ci_dx(param)
+        s_dx   = self.f_s_dx(v)
+        ce_dx  = self.f_ce_dx(v)
+        ci_dx  = self.f_ci_dx(v, imask)
 
         s = self.static_param
         Ts = v.get_Ts()
@@ -668,9 +806,9 @@ class poly_vel_profile(object):
 
         res = np.zeros((3,3))
         
-        fv_d2x, param = f_fv_d2x(param)
-        fa_d2x, param = f_fa_d2x(param)
-        #fj_d2x, param = f_fj_d2x(param)
+        fv_d2x, param = self.f_fv_d2x(param)
+        fa_d2x, param = self.f_fa_d2x(param)
+        #fj_d2x, param = self.f_fj_d2x(param)
         
         s = self.static_param
         Ts = v.get_Ts()
@@ -694,20 +832,189 @@ class poly_vel_profile(object):
         
         return res
         
+    
+    def f_fv_check(self, v, threshold=0.0):
+        res = (np.abs(v)>=threshold)
+        if res:
+            clr.print_red_text("fv()=%20.18lf, should be 0."%(res))
+        return res
+        
+        
+    def f_fa_check(self, a, threshold=0.0):
+        res = (np.abs(a)>=threshold)
+        if res:
+            clr.print_red_text("fa()=%20.18lf, should be 0."%(res))
+        return res
+        
+    def f_f1_check(self, f1, threshold=0.0):
+        mask = 1
+        
+        diff = np.abs(f1)
+        res = (diff>=threshold)
+        
+        state = PolyVelProfile.RegionEnum.EDGE
+        
+        if res:
+            if f1 > 0:
+                clr.print_red_text("f1=%32.30lf > 0"%f1)
+                state = PolyVelProfile.RegionEnum.OUTSIDE
+            else:
+                #self.l1 = 0
+                mask = 0
+                state = PolyVelProfile.RegionEnum.INSIDE
+        else:
+            state = PolyVelProfile.RegionEnum.EDGE
+        
+        return state, mask
+        
+        
+        
+    def f_f2_check(self, f2, threshold=0.0):
+        mask = 1
+        
+        diff = np.abs(f2)
+        res = (diff>=threshold)
+        
+        state = PolyVelProfile.RegionEnum.EDGE
+        
+        if res:
+            if f2 > 0:
+                clr.print_red_text("f2=%32.30lf > 0"%f2)
+                state = PolyVelProfile.RegionEnum.OUTSIDE
+            else:
+                #self.l2 = 0
+                mask = 0
+                state = PolyVelProfile.RegionEnum.INSIDE
+        else:
+            state = PolyVelProfile.RegionEnum.EDGE
+        
+        
+        return state, mask
+        
+        
+    def f_f3_check(self, f3):
+        mask = 1
+        
+        diff = np.abs(f3)
+        res = (diff>=threshold)
+        
+        state = PolyVelProfile.RegionEnum.EDGE
+        
+        if res:
+            if f3 > 0:
+                clr.print_red_text("f3=%32.30lf > 0"%f3)
+                state = PolyVelProfile.RegionEnum.OUTSIDE
+            else:
+                #self.l1 = 0
+                mask = 0
+                state = PolyVelProfile.RegionEnum.INSIDE
+        else:
+            state = PolyVelProfile.RegionEnum.EDGE
+        
+        
+        return state, mask
+        
+        
+    def f_f4_check(self, f4):
+        mask = 1
+        
+        diff = np.abs(f4)
+        res = (diff>=threshold)
+        
+        state = PolyVelProfile.RegionEnum.EDGE
+        
+        if res:
+            if f4 > 0:
+                clr.print_red_text("f4=%32.30lf > 0"%f4)
+                state = PolyVelProfile.RegionEnum.OUTSIDE
+            else:
+                #self.l1 = 0
+                mask = 0
+                state = PolyVelProfile.RegionEnum.INSIDE
+        else:
+            state = PolyVelProfile.RegionEnum.EDGE
+        
+        
+        return state, mask
+        
 
-        
-        
-class test(object):
-    def __init__(self):
-        self.var = Param()
-        print(self.var)
-        
-        self.mod_in(self.var.copy())
-        
-        print(self.var)
-        
-    def mod_in(self,v):
-        v.p5 = 100
 
-        
-test()
+def test_0():
+            
+    class test(object):
+        def __init__(self):
+            self.var = Param()
+            print(self.var)
+            
+            self.mod_in(self.var.copy())
+            
+            
+            
+            print(self.var)
+            
+            self.var.lce = [23,34]
+            print(self.var)
+            self.var.lci = range(5,9)
+            print(self.var)
+            print("---",np.array(self.var.lce))
+            print("---",np.array(self.var.lci))
+            
+        def mod_in(self,v):
+            v.p5 = 100
+            v.lci[1] = 9999
+            print(v)
+
+            
+    test()
+    
+    PolyVelProfile.RegionEnum.INSIDE = 9999
+    PolyVelProfile.RegionEnum.OUTSIDE = 999900
+    PolyVelProfile.RegionEnum.EDGE = 9999000000
+    print(PolyVelProfile.RegionEnum)
+    
+test_0()
+
+def test_1():
+    class test_lambda(object):
+        def __init__(self):
+            self.l0 = 0
+            self.l1 = 0
+            self.l2 = 0
+
+            self.getl0 = lambda :self.l0
+            self.getl1 = lambda :self.l1
+            self.getl2 = lambda :self.l2
+
+        def setl0(self, x):
+            #print("setl0", self, x)
+            self.l0 = x
+
+        def setl1(self, x):
+            #print("setl1", self, x)
+            self.l1 = x
+
+        def setl2(self, x):
+            #print("setl2", self, x)
+            self.l2 = x
+
+        def __repr__(self):
+            return self.__str__()
+            
+        def __str__(self):
+            return "test_lambda< l0=%s, l1=%s, l2=%s >"%(self.l0,self.l1,self.l2)
+            
+
+    t1 = test_lambda()
+            
+    a = Param.DummyList()
+    a.register_item_cb(0, t1.getl0, t1.setl0)
+    a.register_item_cb(1, t1.getl1, t1.setl1)
+    a.register_item_cb(2, t1.getl2, t1.setl2)
+
+    print(t1)
+    a[0] = 1
+    print(t1)
+    a[1] = 2
+    print(t1)
+    a[2] = 3
+    print(t1)
