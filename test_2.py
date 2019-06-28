@@ -30,7 +30,7 @@ class StaticParam(object):
         self.p0 = 0
         self.p1 = self.v0
         self.p2 = self.a0/2.0
-        self.p3 = j0/6.0
+        self.p3 = self.j0/6.0
         
         self.threshold = 1e-10
         
@@ -331,7 +331,7 @@ class PolyVelProfile(object):
         sp.p0 = 0
         sp.p1 = sp.v0
         sp.p2 = sp.a0/2.0
-        sp.p3 = j0/6.0
+        sp.p3 = sp.j0/6.0
         
         sp.threshold = 1e-10
         
@@ -340,6 +340,9 @@ class PolyVelProfile(object):
         self.var = Param()
         
         self.ci_mask = [1] * 4  # 1 for activated, 0 for deactivated
+        
+        self.init_var(self.var)
+    
         
     def get_n_ci_activated(self, masks):
         return len(list(filter(lambda x:x, masks)))
@@ -547,7 +550,7 @@ class PolyVelProfile(object):
         
         s_res = self.f_s(v)
         res =  ( s_res -
-                 1/2.0 * s1     )
+                 1/2.0 * s.s1     )
         return res
         
         
@@ -570,8 +573,8 @@ class PolyVelProfile(object):
                           3 * v.p4 * Ts[2] +
                           3 * s.p3 * Ts[1] +
                           2 * s.p2         - 
-                              a_max        )
-        res = f4(p5)
+                              s.a_max        )
+        res = f4(v.p5)
         return res
 
         
@@ -722,6 +725,8 @@ class PolyVelProfile(object):
         
         if(imask):
             ni = self.get_n_ci_activated(imask)
+            print("f_c()  m1=%d m2=%d m3=%d m4=%d\n"
+                  ""%imask)
         else:
             ni = 4
         
@@ -731,8 +736,6 @@ class PolyVelProfile(object):
         else:
             res =  ce
             
-        print("f_c()  m1=%d m2=%d m3=%d m4=%d\n"
-              ""%imask)
             
             
         return res
@@ -937,7 +940,48 @@ class PolyVelProfile(object):
         
         return state, mask
         
-
+    
+    def init_var(self, v):
+        s = self.static_param
+        
+        v.lce = [1.0] * 2
+        v.lci = [1.0] * 4
+        
+        T = 2.0
+        v.set_T(T)
+        Ts = v.get_Ts()
+        
+        dv = s.v1 - s.v0
+        
+        A_ = np.array( [ [ 3 * Ts[4], 4 * Ts[3] ] ,
+                         [ 5 * Ts[4], 6 * Ts[3] ] ] )
+        b_ = np.array( [ dv, 0 ] )
+        v.p5, v.p4 = np.linalg.solve( A_, b_ )
+        
+        
+        print("v: %s"%(v))
+        
+        is_inside = self.check_var_inside_inequality_constraint( v )
+        if not is_inside:
+            self.move_var_inside_inequality_constraint( v )
+            
+        print("v: %s"%(v))
+        
+        
+    def check_var_inside_inequality_constraint(self, v):
+        print("c: %s"%(self.f_c(v)))
+        return True
+        
+    def move_var_inside_inequality_constraint(self, v):
+        pass
+        
+        
+        
+    
+def test_2():
+    pvp = PolyVelProfile()
+    
+test_2()
 
 def test_0():
             
@@ -972,7 +1016,7 @@ def test_0():
     PolyVelProfile.RegionEnum.EDGE = 9999000000
     print(PolyVelProfile.RegionEnum)
     
-test_0()
+#test_0()
 
 def test_1():
     class test_lambda(object):
