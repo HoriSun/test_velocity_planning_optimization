@@ -10,8 +10,8 @@ v0 = 0.0
 a0 = 0.0
 j0 = 0.0
 
-v1 = 1.0
-s1 = 2.5
+v1 = 2.0
+s1 = 10.0
 T1 = 10.0
 a_max = 1.0
 
@@ -28,6 +28,8 @@ p5_list = []
 p4_list = []
 
 clr = Color()
+
+result_found = False
 
 def plot_fva():
     fva_list_a = np.array(fva_list).T
@@ -77,6 +79,179 @@ def plot_t():
     ax.legend()
     #plt.show()
 
+    
+    
+def plot_all_final(p5, p4, T):
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+
+    def f_s_temp(param):
+        p5, p4, p3, p2, p1, p0, Ts, T_max = param
+        p6 = -p5/(3.0*T_max) if Ts[1] else 0
+        res =  (          p6 * Ts[6] + 
+                          p5 * Ts[5] + 
+                          p4 * Ts[4] +
+                          p3 * Ts[3] + 
+                          p2 * Ts[2] +
+                          p1 * Ts[1] +
+                          p0           )
+        return res
+
+    def f_fv_temp(param):
+        p5, p4, p3, p2, p1, p0, Ts, T_max = param
+        p6 = -p5/(3.0*T_max) if Ts[1] else 0
+        res =  (  6 * p6 * Ts[5] +
+                  5 * p5 * Ts[4] +
+                  4 * p4 * Ts[3] +
+                  3 * p3 * Ts[2] +
+                  2 * p2 * Ts[1] +
+                      p1           )
+        return res
+
+    def f_fa_temp(param):
+        p5, p4, p3, p2, p1, p0, Ts, T_max = param
+        p6 = -p5/(3.0*T_max) if Ts[1] else 0
+        res =  ( 30 * p6 * Ts[4] +
+                 20 * p5 * Ts[3] +
+                 12 * p4 * Ts[2] +
+                  6 * p3 * Ts[1] +
+                  2 * p2          )
+        return res
+
+    def f_fj_temp(param):
+        p5, p4, p3, p2, p1, p0, Ts, T_max = param
+        p6 = -p5/(3.0*T_max) if Ts[1] else 0
+        res =  ( 120 * p6 * Ts[3] +
+                  60 * p5 * Ts[2] +
+                  24 * p4 * Ts[1] +
+                   6 * p3          )
+        return res
+    
+    def f_fdj_temp(param):
+        p5, p4, p3, p2, p1, p0, Ts, T_max = param
+        p6 = -p5/(3.0*T_max) if Ts[1] else 0
+        res =  ( 360 * p6 * Ts[2] +
+                 120 * p5 * Ts[1] +
+                  24 * p4           )
+        return res
+            
+    t = np.linspace(0,T,100)
+    param = p5, p4, p3, p2, p1, p0
+    s  = np.array(list(map(lambda x:f_s_temp(  param+(get_powers(x,6),T)),t)))
+    v  = np.array(list(map(lambda x:f_fv_temp( param+(get_powers(x,6),T)),t)))
+    a  = np.array(list(map(lambda x:f_fa_temp( param+(get_powers(x,6),T)),t)))
+    j  = np.array(list(map(lambda x:f_fj_temp( param+(get_powers(x,6),T)),t)))
+    #dj = np.array(list(map(lambda x:f_fdj_temp(param+(get_powers(x,6),T)),t)))
+    
+    s_max = s.max()
+    v_max = v.max()
+    a_max = a.max()
+    j_max = j.max()
+    #dj_max = dj.max()
+    
+    s_min = s.min()
+    v_min = v.min()
+    a_min = a.min()
+    j_min = j.min()
+    #dj_min = dj.min()
+    
+    y_max = np.array([s_max, v_max, a_max, j_max, 
+                      #dj_max
+                      ]).max()
+    y_min = np.array([s_min, v_min, a_min, j_min, 
+                      #dj_min
+                      ]).min()
+    
+    #y_max = dj_max
+    #y_min = dj_min
+    
+    
+    #ax.cla()
+    #self.ax.axis("equal")
+    margin = 1
+    
+    #ax.set_xlim(0 - margin, T + margin    )
+    #ax.set_ylim(y_min - margin, y_max + margin)
+
+    s_line, = ax.plot(t, s, "o-", color="red",   label="s")
+    v_line, = ax.plot(t, v, "o-", color="blue",  label="v")
+    a_line, = ax.plot(t, a, "o-", color="green", label="a")
+    j_line, = ax.plot(t, j, "o-", color="orange", label="j")
+        
+    #self.dj_line.set_data(t,dj)
+    
+    
+    n_s_max = np.argmax(s)
+    n_v_max = np.argmax(v)
+    n_a_max = np.argmax(a)
+    n_j_max = np.argmax(j)
+    #n_dj_max = np.argmax(dj)
+    
+    n_s_min = np.argmin(s)
+    n_v_min = np.argmin(v)
+    n_a_min = np.argmin(a)
+    n_j_min = np.argmin(j)
+    #n_dj_min = np.argmin(dj)
+    
+    s_max_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
+    s_min_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
+    v_max_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
+    v_min_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
+    a_max_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
+    a_min_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
+    j_max_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
+    j_min_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
+    
+    
+    annos = {"s":[(n_s_max, a_max_anno),
+                  (n_s_min, a_min_anno)],
+             "v":[(n_v_max, v_max_anno),
+                  (n_v_min, v_min_anno)],
+             "a":[(n_a_max, s_max_anno),
+                  (n_a_min, a_min_anno)],
+             "j":[(n_j_max, j_max_anno),
+                  (n_j_min, j_min_anno)],
+             #"dj":[(n_dj_max, self.dj_max_anno),
+             #     (n_dj_min, self.dj_min_anno)]
+             }
+     
+    lines = {"s":s,
+             "v":v,
+             "a":a,
+             "j":j,
+             #"dj":dj
+             }
+     
+    #plt.plot([0,1.0],[1.5,1.5], "-.", label="target speed = %3.1fm/s"%(v_max))
+    
+    
+    anno_artists = []
+    
+    for key in annos:
+        line = lines[key]
+        for i in annos[key]:
+            #print(i)
+            xy = (t[i[0]], line[i[0]])
+            i[1].set_text(" %4.2lf"%xy[1])
+            #i[1].set_position(xytext=xy, xy=xy)
+            i[1].set_position(xy)
+    
+    #print_param(self.param)
+    
+
+    ##ax.axis("square")
+    #ax.axis("scaled")
+    #ax.axis("equal")
+    #ax.relim()
+    #ax.autoscale()
+    ax.grid(True)
+    #ax.legend()
+    #plt.grid(False)
+    #plt.axis("scaled")
+    ax.legend()
+    plt.show()
+
+    
     
     
 def err_handle():
@@ -482,8 +657,10 @@ def f_ce_dx(param):
 
     
 def f_ci(param):
+    
     f1, param = f_f1(param)
-    f2, param = f_f2(param)
+    #f2, param = f_f2(param)
+    f2, _     = f_f2(param) # not using l2
     f3, param = f_f3(param)
     f4, param = f_f4(param)
     f5, param = f_f5(param)
@@ -828,10 +1005,11 @@ class iter(object):
 
         self.param = (p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5, ni)
         
+        self.is_1st_loop = True
+        
     def loop(self):
         # shutdown one condition
         p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5, ni = self.param
-        
         
         m2 = 0 
         fs = [0] * len(list(filter(lambda x:x, [m1,m2,m3,m4,m5])))
@@ -841,137 +1019,141 @@ class iter(object):
         mf = [m1,m2,m3,m4,m5]
         print("loop() -5 mf=%s"%(mf))
         
-        c, param = f_c(param)
+        if(self.is_1st_loop):
+            self.is_1st_loop = False
+        else:
+            
+            c, param = f_c(param)
 
-        p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5, ni = param
-        
-        #print_param(param,"="*10+"[1]")
-        mf = [m1,m2,m3,m4,m5]
-        print("loop() -4 mf=%s"%(mf))
-        
-        
-        L_dx, param = f_L_dx(param)
-        print("loop() L_dx=%s"%(L_dx))
-        #print("c=", c)
-        b = np.concatenate( ( -L_dx,
-                              -c ), axis = 0 )
-        #print("b=",b)
-      
-        mf = [m1,m2,m3,m4,m5]
-        print("loop() -3 mf=%s"%(mf))
-        
-      
-        L_d2x, param = f_L_d2x(param)
-        
-        mf = [m1,m2,m3,m4,m5]
-        print("loop() -2 mf=%s"%(mf))
-        
-        c_dx, param = f_c_dx(param)
-        
-        mf = [m1,m2,m3,m4,m5]
-        print("loop() -1 mf=%s"%(mf))
-        
-        
-        print("loop() c_dx=%s"%(c_dx))
-        print_param(param, "[ loop()  1 param ]")
-        #print(L_d2x.shape, c_dx.shape)
-        A_0 = np.concatenate( ( L_d2x, c_dx.T         ), axis = 1 )
+            p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5, ni = param
+            
+            #print_param(param,"="*10+"[1]")
+            mf = [m1,m2,m3,m4,m5]
+            print("loop() -4 mf=%s"%(mf))
+            
+            
+            L_dx, param = f_L_dx(param)
+            print("loop() L_dx=%s"%(L_dx))
+            #print("c=", c)
+            b = np.concatenate( ( -L_dx,
+                                  -c ), axis = 0 )
+            #print("b=",b)
+          
+            mf = [m1,m2,m3,m4,m5]
+            print("loop() -3 mf=%s"%(mf))
+            
+          
+            L_d2x, param = f_L_d2x(param)
+            
+            mf = [m1,m2,m3,m4,m5]
+            print("loop() -2 mf=%s"%(mf))
+            
+            c_dx, param = f_c_dx(param)
+            
+            mf = [m1,m2,m3,m4,m5]
+            print("loop() -1 mf=%s"%(mf))
+            
+            
+            print("loop() c_dx=%s"%(c_dx))
+            print_param(param, "[ loop()  1 param ]")
+            #print(L_d2x.shape, c_dx.shape)
+            A_0 = np.concatenate( ( L_d2x, c_dx.T         ), axis = 1 )
 
-        
-        mf = [m1,m2,m3,m4,m5]
-        print("loop() 0 mf=%s"%(mf))
-        
-        
-        ni,param = get_ni(param)
-        
-        mf = [m1,m2,m3,m4,m5]
-        print("loop() 1 mf=%s"%(mf))
-        
-        
-        nc = 2 + ni
+            
+            mf = [m1,m2,m3,m4,m5]
+            print("loop() 0 mf=%s"%(mf))
+            
+            
+            ni,param = get_ni(param)
+            
+            mf = [m1,m2,m3,m4,m5]
+            print("loop() 1 mf=%s"%(mf))
+            
+            
+            nc = 2 + ni
 
-        #print_param(param,"="*10+"[2]")
-        
+            #print_param(param,"="*10+"[2]")
+            
 
-        A_1 = np.concatenate( ( c_dx , np.zeros((nc,nc))), axis = 1 )
-        A = np.concatenate( ( A_0, A_1 ), axis = 0 )
+            A_1 = np.concatenate( ( c_dx , np.zeros((nc,nc))), axis = 1 )
+            A = np.concatenate( ( A_0, A_1 ), axis = 0 )
 
-        #print(A.shape,b.shape)
-        #print(A,"="*10,b)
+            #print(A.shape,b.shape)
+            #print(A,"="*10,b)
 
-        nd = nc + 3
+            nd = nc + 3
 
-        if(0):
-            f = open("test.csv","w")
-            for i in range(nd):
-                for j in range(nd):
-                    f.write("%lf,"%A[i][j])
-                f.write(",%lf"%b[i])
-                f.write("\n")
-            f.close()
+            if(1):
+                f = open("test.csv","w")
+                for i in range(nd):
+                    for j in range(nd):
+                        f.write("%lf,"%A[i][j])
+                    f.write(",%lf"%b[i])
+                    f.write("\n")
+                f.close()
 
-        x = np.linalg.solve(A,b)
+            x = np.linalg.solve(A,b)
 
-        #print_param(param,"="*10+"[3]")
-        mf = [m1,m2,m3,m4,m5]
-        print("loop() 2 mf=%s"%(mf))
-        
-        
-        if(1):
-            prec_n = 30
-            prec = "%d.%d"%(prec_n+2, prec_n)
-            f = open("test.csv","w")
-            for i in range(nd):
-                for j in range(nd):
-                    f.write("%%%slf,"%prec%A[i][j])
-                f.write(",%%%slf,,"%prec%b[i])
-                f.write("%%%slf,"%prec%x[i])
-                f.write("\n")
-            f.close()
+            #print_param(param,"="*10+"[3]")
+            mf = [m1,m2,m3,m4,m5]
+            print("loop() 2 mf=%s"%(mf))
+            
+            
+            if(0):
+                prec_n = 30
+                prec = "%d.%d"%(prec_n+2, prec_n)
+                f = open("test.csv","w")
+                for i in range(nd):
+                    for j in range(nd):
+                        f.write("%%%slf,"%prec%A[i][j])
+                    f.write(",%%%slf,,"%prec%b[i])
+                    f.write("%%%slf,"%prec%x[i])
+                    f.write("\n")
+                f.close()
 
-        print(x)
-        
-        T = Ts[1]
-        
-        scale = 1
-        
-        p5 += x[0] * scale
-        p4 += x[1] * scale
-        T  += x[2] * scale
-        lv += x[3] * scale
-        la += x[4] * scale
-        
-        p5_list.append(p5)
-        p4_list.append(p4)
-        t_list.append(T)
-        
-        
-        Ts = get_powers(T, 5)
-        
-        
-        
-        mf = [m1,m2,m3,m4,m5]
-        lf = [0,0,0,0,0]
-        
-        
-        j = 0
-        for i in range(5,5+ni):
-            while(mf[j]==0):
-                j+=1
-            else:
-                lf[j] = x[i]
-        
-        print("loop() 3 mf=%s"%(mf))
-        print("loop()  lf=%s"%(lf))
-        
-        
-        l1 += lf[0] * scale
-        l2 += lf[1] * scale
-        l3 += lf[2] * scale
-        l4 += lf[3] * scale
-        l5 += lf[4] * scale
-        #B,d,D = (np.linalg.svd(A))
-        
+            print(x)
+            
+            T = Ts[1]
+            
+            scale = 1
+            
+            p5 += x[0] * scale
+            p4 += x[1] * scale
+            T  += x[2] * scale
+            lv += x[3] * scale
+            la += x[4] * scale
+            
+            p5_list.append(p5)
+            p4_list.append(p4)
+            t_list.append(T)
+            
+            
+            Ts = get_powers(T, 5)
+            
+            
+            
+            mf = [m1,m2,m3,m4,m5]
+            lf = [0,0,0,0,0]
+            
+            
+            j = 0
+            for i in range(5,5+ni):
+                while(mf[j]==0):
+                    j+=1
+                else:
+                    lf[j] = x[i]
+            
+            print("loop() 3 mf=%s"%(mf))
+            print("loop()  lf=%s"%(lf))
+            
+            
+            l1 += lf[0] * scale
+            l2 += lf[1] * scale
+            l3 += lf[2] * scale
+            l4 += lf[3] * scale
+            l5 += lf[4] * scale
+            #B,d,D = (np.linalg.svd(A))
+            
         self.param = p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5, ni
 
         
@@ -1103,7 +1285,9 @@ class iter(object):
             clr.print_green_text("Calc success. \n"
                                  "p5=%32.30lf, p4=%32.30lf, T=%32.30lf\n"
                                  ""%(p5, p4, T))
-            anim.event_source.stop()
+            #anim.event_source.stop()
+            result_found = True
+            plot_all_final(p5, p4, T)
         
         
         if(0):
@@ -1207,14 +1391,16 @@ class iter(object):
         #ax.cla()
         #self.ax.axis("equal")
         margin = 1
-        self.ax.set_xlim(0 - margin, T + margin    )
-        self.ax.set_ylim(y_min - margin, y_max + margin)
+        
+        if(not result_found):
+            self.ax.set_xlim(0 - margin, T + margin    )
+            self.ax.set_ylim(y_min - margin, y_max + margin)
 
         self.s_line.set_data(t,s)
         self.v_line.set_data(t,v)
         self.a_line.set_data(t,a)
         self.j_line.set_data(t,j)
-        self.dj_line.set_data(t,dj)
+        #self.dj_line.set_data(t,dj)
         
         
         n_s_max = np.argmax(s)
@@ -1237,14 +1423,16 @@ class iter(object):
                       (n_a_min, self.a_min_anno)],
                  "j":[(n_j_max, self.j_max_anno),
                       (n_j_min, self.j_min_anno)],
-                 "dj":[(n_dj_max, self.dj_max_anno),
-                      (n_dj_min, self.dj_min_anno)]}
+                 #"dj":[(n_dj_max, self.dj_max_anno),
+                 #     (n_dj_min, self.dj_min_anno)]
+                 }
          
         lines = {"s":s,
                  "v":v,
                  "a":a,
                  "j":j,
-                 "dj":dj}
+                 #"dj":dj
+                 }
          
         #plt.plot([0,1.0],[1.5,1.5], "-.", label="target speed = %3.1fm/s"%(v_max))
         
@@ -1302,11 +1490,11 @@ class iter(object):
         return res
         
     def init(self):
-        self.s_line, = ax.plot([], [], color="red",   label="s")
-        self.v_line, = ax.plot([], [], color="blue",  label="v")
-        self.a_line, = ax.plot([], [], color="green", label="a")
-        self.j_line, = ax.plot([], [], color="orange", label="j")
-        self.dj_line, = ax.plot([], [], color="purple", label="dj")
+        self.s_line, = ax.plot([], [], "o-", color="red",   label="s")
+        self.v_line, = ax.plot([], [], "o-", color="blue",  label="v")
+        self.a_line, = ax.plot([], [], "o-", color="green", label="a")
+        self.j_line, = ax.plot([], [], "o-", color="orange", label="j")
+        #self.dj_line, = ax.plot([], [], "o-", color="purple", label="dj")
         self.s_max_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
         self.s_min_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
         self.v_max_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
@@ -1315,8 +1503,8 @@ class iter(object):
         self.a_min_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
         self.j_max_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
         self.j_min_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
-        self.dj_max_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
-        self.dj_min_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
+        #self.dj_max_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
+        #self.dj_min_anno = ax.annotate("", xytext=(0,0), xy=(0,0))
         
         self.x = np.linspace(0, 1, 200)
         
