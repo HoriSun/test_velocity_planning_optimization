@@ -6,8 +6,17 @@ import sys
 from hl import Color
 import matplotlib.animation as ani
 from collections import Iterable
+import threading
 
 clr = Color()
+
+
+def start_daemon(target):
+    t = threading.Thread(target = target)
+    t.setDaemon(True)
+    t.start()
+    return t
+
 
 def get_powers(t, order):
     ret = [0]*(order+1)
@@ -64,6 +73,7 @@ class Param(object):
             self.set_cb.append( setcb )
             
         def __getitem__(self, slice):
+            #print("getitem %s"%(slice))
             #print("get %s %s"%(slice))
             funs = self.get_cb[slice]
             if(not isinstance(funs, list)):
@@ -72,6 +82,7 @@ class Param(object):
                 return list(map(lambda x:x(),funs))
             
         def __setitem__(self, slice, values):
+            #print("setitem %s %s"%(slice, values))
             funs = self.set_cb[slice]
             
             if(not isinstance(funs, list)):
@@ -268,14 +279,20 @@ class Param(object):
         return self.__str__()
         
     def __str__(self):
-        return ("( "
-                "p5=%lf, p4=%lf, "
-                "lv=%lf, la=%lf, "
-                "l1=%lf, l2=%lf, l3=%lf, l4=%lf )"
-                ""%(self.p5, self.p4,
-                    self.lv, self.la,
-                    self.l1, self.l2, self.l3, self.l4))
-          
+        if(0):
+            return ("( "
+                    "p5=%32.30lf, p4=%32.30lf, T=%32.30lf, "
+                    "lv=%32.30lf, la=%32.30lf, "
+                    "l1=%32.30lf, l2=%32.30lf, l3=%32.30lf, l4=%32.30lf )"
+                    ""%(self.p5, self.p4, self.get_T(),
+                        self.lv, self.la,
+                        self.l1, self.l2, self.l3, self.l4))
+        else:
+            return ("( %s )"%(", ".join(["% 9.6lf"]*9))%(
+                        self.p5, self.p4, self.get_T(),
+                        self.lv, self.la,
+                        self.l1, self.l2, self.l3, self.l4))
+              
     def copy(self):
         return Param(self)
         
@@ -339,9 +356,12 @@ class PolyVelProfile(object):
         
         self.var = Param()
         
-        self.ci_mask = [1] * 4  # 1 for activated, 0 for deactivated
+        self.ci_mask = [0] * 4  # 1 for activated, 0 for deactivated
         
-        self.init_var(self.var)
+        #self.run(self.var)
+    
+    def run(self, v):
+        self.init_var(v)
     
         
     def get_n_ci_activated(self, masks):
@@ -641,7 +661,7 @@ class PolyVelProfile(object):
         return res
 
         
-    def f_ci(self, v, mask=None):
+    def f_ci(self, v, mask=None, force_all=False):
         
         s = self.static_param
         Ts = v.get_Ts()
@@ -651,7 +671,7 @@ class PolyVelProfile(object):
         f3 = self.f_f3(v)
         f4 = self.f_f4(v)
         
-        #print("f_ci()  f1=%lf f2=%lf f3=%lf f4=%lf"
+        #print("f_ci()  ( %lf  %lf  %lf  %lf )"
         #      ""%(f1, f2, f3, f4))
         #print("f_ci()  m1=%d m2=%d m3=%d m4=%d\n"
         #      ""%mask)
@@ -663,8 +683,23 @@ class PolyVelProfile(object):
         
         # still, they should all be zero, normally.
         
-        if(mask):
-            fs = []
+        if(not mask):
+            mask = [0,0,0,0]
+            
+        def not_activated(a, threshold):
+            #return np.abs(a)>threshold
+            return a < 0-threshold
+            
+        threshold = 0.0
+            
+        mask[0] = 0 if not_activated(f1, threshold) else 1
+        mask[1] = 0 if not_activated(f2, threshold) else 1
+        mask[2] = 0 if not_activated(f3, threshold) else 1
+        mask[3] = 0 if not_activated(f4, threshold) else 1
+        
+        fs = []
+        
+        if(not force_all):
             if(mask[0]):
                 fs.append(f1)
             if(mask[1]):
@@ -674,8 +709,8 @@ class PolyVelProfile(object):
             if(mask[3]):
                 fs.append(f4)
         else:
-            fs = [f1, f2, f3, f4]
-            
+            fs = [f1,f2,f3,f4]
+                
         #print_param(param)
         
         res =  np.array( fs )
@@ -692,24 +727,22 @@ class PolyVelProfile(object):
        
         
         if(not mask):
-            ci_dx = ([[df1],
-                      [df2],
-                      [df3],
-                      [df4]])
+            mask = [0,0,0,0]
+            
+        ni = self.get_n_ci_activated(mask)
+        if(not ni):
+            ci_dx = None
         else:
-            ni = self.get_n_ci_activated(mask)
-            if(not ni):
-                ci_dx = None
-            else:
-                ci_dx = []
-                if(mask[0]):
-                    ci_dx.append([df1])
-                if(mask[1]):
-                    ci_dx.append([df2])
-                if(mask[2]):
-                    ci_dx.append([df3])
-                if(mask[3]):
-                    ci_dx.append([df4])
+            ci_dx = []
+            if(mask[0]):
+                ci_dx.append([df1])
+            if(mask[1]):
+                ci_dx.append([df2])
+            if(mask[2]):
+                ci_dx.append([df3])
+            if(mask[3]):
+                ci_dx.append([df4])
+
                 
         if(not ci_dx):
             res = np.array([[]])
@@ -723,10 +756,11 @@ class PolyVelProfile(object):
         ce = self.f_ce(v)
         ci = self.f_ci(v,imask)
         
+        #print("f_c()  m1=%d m2=%d m3=%d m4=%d\n"
+        #      ""%tuple(imask))
+
         if(imask):
             ni = self.get_n_ci_activated(imask)
-            print("f_c()  m1=%d m2=%d m3=%d m4=%d\n"
-                  ""%imask)
         else:
             ni = 4
         
@@ -749,7 +783,8 @@ class PolyVelProfile(object):
         else:
             ni = 4
         
-        print("f_c_dx() =========\n%s\n%s"%(ce_dx, ci_dx))
+        #print("f_c_dx() =========\n%s\n%s"%(ce_dx, ci_dx))
+        
         if(ni):
             res =  np.concatenate( ( ce_dx , 
                                      ci_dx ), axis = 0 )
@@ -770,15 +805,18 @@ class PolyVelProfile(object):
 
         #print_param(param)
         
-        le = np.array([lv,
-                       la,
+        le = np.array([v.lv,
+                       v.la,
                        #lj
                          ]).reshape((1,2))
         
-        lf = [(m1, l1),
-              (m2, l2),
-              (m3, l3),
-              (m4, l4)]
+        if(not imask):
+            imask = [0,0,0,0]
+        
+        lf = [(imask[0], v.l1),
+              (imask[1], v.l2),
+              (imask[2], v.l3),
+              (imask[3], v.l4)]
               
         lilist = list(map(lambda y:y[1], filter(lambda x:x[0], lf)))
         
@@ -794,24 +832,23 @@ class PolyVelProfile(object):
             print("ci_dx=%s"%ci_dx)
         
         res = s_dx + le.dot(ce_dx)
-        ni,param = get_ni(param)
+        ni = self.get_n_ci_activated(imask)
         
         if(ni):
             res += li.dot(ci_dx)
             
-        res = res[0]
+        res = np.array(res)
         
         return res
                  
 
 
-    def f_L_d2x(self, v):
+    def f_L_d2x(self, v, imask):
 
         res = np.zeros((3,3))
         
-        fv_d2x, param = self.f_fv_d2x(param)
-        fa_d2x, param = self.f_fa_d2x(param)
-        #fj_d2x, param = self.f_fj_d2x(param)
+        fv_d2x = self.f_fv_d2x(v)
+        fa_d2x = self.f_fa_d2x(v)
         
         s = self.static_param
         Ts = v.get_Ts()
@@ -821,16 +858,19 @@ class PolyVelProfile(object):
                  #fj_d2x 
                          )
         
-        lf = ((m1, l1, f_f1_d2x),
-              (m2, l2, f_f2_d2x),
-              (m3, l3, f_f3_d2x),
-              (m4, l4, f_f4_d2x))
+        if not imask:
+            imask = [0,0,0,0]
+        
+        lf = ((imask[0], v.l1, self.f_f1_d2x),
+              (imask[1], v.l2, self.f_f2_d2x),
+              (imask[2], v.l3, self.f_f3_d2x),
+              (imask[3], v.l4, self.f_f4_d2x))
 
-        ni,param = get_ni(param)
+        ni = self.get_n_ci_activated(imask)
         
         if(ni):
             res += reduce(lambda y0,y1:y0+y1, 
-                          map(lambda y:y[1]*y[2](param)[0], 
+                          map(lambda y:y[1]*y[2](v)[0], 
                               filter(lambda x:x[0], lf)))
         
         return res
@@ -959,27 +999,379 @@ class PolyVelProfile(object):
         v.p5, v.p4 = np.linalg.solve( A_, b_ )
         
         
-        print("v: %s"%(v))
+        #print("v: %s"%(v))
         
         is_inside = self.check_var_inside_inequality_constraint( v )
         if not is_inside:
             self.move_var_inside_inequality_constraint( v )
             
-        print("v: %s"%(v))
+        #print("v: %s"%(v))
         
         
     def check_var_inside_inequality_constraint(self, v):
-        print("c: %s"%(self.f_c(v)))
+        clr.print_green_text("check_var_inside_inequality_constraint(%s)"%(v))
+        mask = self.ci_mask[::]
+        #print("mask: %s"%(mask))
+        c = self.f_c(v, mask)
+        #print("c: %s"%(c))
+        #print("mask: %s"%(mask))
+        
+        if(self.get_n_ci_activated(mask)):
+            while(self.get_n_ci_activated(mask)):
+            #if(self.get_n_ci_activated(mask)):
+                #clr.print_blue_text("+"*20)
+                #print("v before iter: %s"%(v))
+        
+                dv = self.iter(v, mask)
+                c = self.f_c(v, mask)
+                clr.print_blue_text(v)
+                #print("c=%s"%(c))
+                #print("mask=%s"%(mask))
+                
+                #print("v after iter: %s"%(v))
+        
+                #self.var_add(v, dv, mask)
+                
         return True
         
     def move_var_inside_inequality_constraint(self, v):
         pass
         
         
+    def var_add(self, v, dv, mask):
+        v.p5 += dv[0]
+        v.p4 += dv[1]
+        v.set_T( v.get_T() + dv[2] )
         
+        v.lv += dv[3]
+        v.la += dv[4]
+        
+        if(self.get_n_ci_activated(mask)):
+            j = 5
+            k = 0
+            for i in range(4):
+                if mask[i]:
+                    v.lci[k] += dv[j]
+                    i+=1
+                    j+=1
+                    
+    def iter(self, v, mask):
+        #print("====iter.begin====")
+        c = self.f_c(v, mask)
+        c = np.zeros(len(c)).reshape((1,len(c)))
+        c_dx  = self.f_c_dx(v, mask)
+        L_dx  = self.f_L_dx(v, mask)
+        L_d2x = self.f_L_d2x(v, mask)
+        ni = self.get_n_ci_activated(mask)
+        nc = 2+ni
+        #print("\nc=\n",c)
+        #print("\nc_dx=\n",c_dx)
+        #print("\nL_dx=\n",L_dx)
+        #print("\nL_d2x=\n",L_d2x)
+        #print("\nmask, ni=\n",mask, ni)
+        
+        A_0 = np.concatenate( (L_d2x,  c_dx.T            ), axis=1 )
+        A_1 = np.concatenate( (c_dx,   np.zeros((nc, nc))), axis=1 )
+        
+        #print("\nA_0=\n", A_0)
+        #print("\nA_1=\n", A_1)
+        
+        A   = np.concatenate( (A_0, A_1),                   axis=0 )
+        
+        b   = np.concatenate( (L_dx.T, np.zeros((nc, 1 ))), axis=0 )
+        
+        #print("\nA=\n", A)
+        #print("\nb=\n", b)
+        
+        dx = np.linalg.solve( A, b )
+        
+        #print("\ndx=\n", dx)
+        
+        dx = dx.T[0]
+        
+        dp5, dp4, dT, dlv, dla = dx[:5]
+        
+        nv = 3+nc
+        
+        dlci = [0]*4
+        
+        j = 3+2
+        for i in range(4): #iter through masks
+            if(mask[i]):
+                dlci[i] = dx[j]
+                j+=1
+        
+        #print("\ndlci=\n", dlci)
+        
+        #print("v in iter before update: %s"%(v))
+        
+        v.p5 += dp5
+        v.p4 += dp4
+        v.set_T( v.get_T() + dT )
+        
+        v.lv += dlv
+        v.la += dla
+        
+        for i in range(4):
+            #print("dlci[%d]=%lf"%(i,dlci[i]))
+            #print("v.lci[%d]=%lf"%(i,v.lci[i]))
+            v.lci__[i] = v.lci[i] + dlci[i] # special feature added. Double underscores as a setter, returns the original variable, while the raw reference without underscores returns a list
+            #print("v.lci[%d]=%lf\n"%(i,v.lci[i]))
+            
+        assert v.p5 < 0
+        assert v.p4 > 0
+        
+        
+        print("ce=%s"%(self.f_ce(v)))
+        print("ci=%s"%(self.f_ci(v, force_all=True)))
+        
+        
+        #print("v in iter after  update: %s"%(v))
+        
+        #print("====iter.end====")
+        
+        
+        
+        
+        
+        
+        
+        
+class Plotter(object):
+    def __init__(self, v, sp):
+        self.v = v # reference of the Param object
+        clr.print_green_text(self.v)
+        self.sp = sp # reference of the StaticParam object
+        clr.print_green_text(self.sp)
+        self.inited = False
+        self.npoints = 100
     
+    def plot(self):
+          
+        def f_s_temp(param):
+            p5, p4, p3, p2, p1, p0, Ts, T_max = param
+            p6 = -p5/(3.0*T_max) if Ts[1] else 0
+            res =  (          p6 * Ts[6] + 
+                              p5 * Ts[5] + 
+                              p4 * Ts[4] +
+                              p3 * Ts[3] + 
+                              p2 * Ts[2] +
+                              p1 * Ts[1] +
+                              p0           )
+            return res
+
+        def f_fv_temp(param):
+            p5, p4, p3, p2, p1, p0, Ts, T_max = param
+            p6 = -p5/(3.0*T_max) if Ts[1] else 0
+            res =  (  6 * p6 * Ts[5] +
+                      5 * p5 * Ts[4] +
+                      4 * p4 * Ts[3] +
+                      3 * p3 * Ts[2] +
+                      2 * p2 * Ts[1] +
+                          p1           )
+            return res
+
+        def f_fa_temp(param):
+            p5, p4, p3, p2, p1, p0, Ts, T_max = param
+            p6 = -p5/(3.0*T_max) if Ts[1] else 0
+            res =  ( 30 * p6 * Ts[4] +
+                     20 * p5 * Ts[3] +
+                     12 * p4 * Ts[2] +
+                      6 * p3 * Ts[1] +
+                      2 * p2          )
+            return res
+
+        def f_fj_temp(param):
+            p5, p4, p3, p2, p1, p0, Ts, T_max = param
+            p6 = -p5/(3.0*T_max) if Ts[1] else 0
+            res =  ( 120 * p6 * Ts[3] +
+                      60 * p5 * Ts[2] +
+                      24 * p4 * Ts[1] +
+                       6 * p3          )
+            return res
+        
+        def f_fdj_temp(param):
+            p5, p4, p3, p2, p1, p0, Ts, T_max = param
+            p6 = -p5/(3.0*T_max) if Ts[1] else 0
+            res =  ( 360 * p6 * Ts[2] +
+                     120 * p5 * Ts[1] +
+                      24 * p4           )
+            return res
+                
+        v = self.v
+        s = self.sp
+            
+        clr.print_red_text(v)
+                
+        T = v.get_T()
+        t = np.linspace(0,T,self.npoints)
+        param = v.p5, v.p4, s.p3, s.p2, s.p1, s.p0
+        s  = np.array(list(map(lambda x:f_s_temp(  param+(get_powers(x,6),T)),t)))
+        v  = np.array(list(map(lambda x:f_fv_temp( param+(get_powers(x,6),T)),t)))
+        a  = np.array(list(map(lambda x:f_fa_temp( param+(get_powers(x,6),T)),t)))
+        j  = np.array(list(map(lambda x:f_fj_temp( param+(get_powers(x,6),T)),t)))
+        #dj = np.array(list(map(lambda x:f_fdj_temp(param+(get_powers(x,6),T)),t)))
+        
+        s_max = s.max()
+        v_max = v.max()
+        a_max = a.max()
+        j_max = j.max()
+        #dj_max = dj.max()
+        
+        s_min = s.min()
+        v_min = v.min()
+        a_min = a.min()
+        j_min = j.min()
+        #dj_min = dj.min()
+        
+        y_max = np.array([s_max, v_max, a_max, j_max, 
+                          #dj_max
+                          ]).max()
+        y_min = np.array([s_min, v_min, a_min, j_min, 
+                          #dj_min
+                          ]).min()
+        
+        #y_max = dj_max
+        #y_min = dj_min
+        
+        
+        #ax.cla()
+        #self.ax.axis("equal")
+        margin = 0.5
+        
+        #if(not result_found):
+        self.ax.set_xlim(0 - margin, T + margin    )
+        self.ax.set_ylim(y_min - margin, y_max + margin)
+
+        self.s_line.set_data(t,s)
+        self.v_line.set_data(t,v)
+        self.a_line.set_data(t,a)
+        self.j_line.set_data(t,j)
+        #self.dj_line.set_data(t,dj)
+        
+        
+        n_s_max = np.argmax(s)
+        n_v_max = np.argmax(v)
+        n_a_max = np.argmax(a)
+        n_j_max = np.argmax(j)
+        #n_dj_max = np.argmax(dj)
+        
+        n_s_min = np.argmin(s)
+        n_v_min = np.argmin(v)
+        n_a_min = np.argmin(a)
+        n_j_min = np.argmin(j)
+        #n_dj_min = np.argmin(dj)
+        
+        annos = {"s":[(n_s_max, self.a_max_anno),
+                      (n_s_min, self.a_min_anno)],
+                 "v":[(n_v_max, self.v_max_anno),
+                      (n_v_min, self.v_min_anno)],
+                 "a":[(n_a_max, self.s_max_anno),
+                      (n_a_min, self.a_min_anno)],
+                 "j":[(n_j_max, self.j_max_anno),
+                      (n_j_min, self.j_min_anno)],
+                 #"dj":[(n_dj_max, self.dj_max_anno),
+                 #     (n_dj_min, self.dj_min_anno)]
+                 }
+         
+        lines = {"s":s,
+                 "v":v,
+                 "a":a,
+                 "j":j,
+                 #"dj":dj
+                 }
+         
+        #plt.plot([0,1.0],[1.5,1.5], "-.", label="target speed = %3.1fm/s"%(v_max))
+        
+        anno_artists = []
+        
+        for key in annos:
+            line = lines[key]
+            for i in annos[key]:
+                #print(i)
+                xy = (t[i[0]], line[i[0]])
+                i[1].set_text(" %4.2lf"%xy[1])
+                #i[1].set_position(xytext=xy, xy=xy)
+                i[1].set_position(xy)
+        
+        #print(v)
+        #print(s)
+        #plt.plot(t,s,color="red",label="s")
+        #plt.plot(t,v,color="blue",label="v")
+        #plt.plot(t,a,color="green",label="a")
+        
+        #plt.legend()
+        #plt.axis("equal")
+        #plt.show()
+        return self.artists
+    
+    def init_anim(self):
+        self.s_line, = self.ax.plot([], [], "o-", color="red",   label="s")
+        self.v_line, = self.ax.plot([], [], "o-", color="blue",  label="v")
+        self.a_line, = self.ax.plot([], [], "o-", color="green", label="a")
+        self.j_line, = self.ax.plot([], [], "o-", color="orange", label="j")
+        #self.dj_line, = self.ax.plot([], [], "o-", color="purple", label="dj")
+        self.s_max_anno = self.ax.annotate("", xytext=(0,0), xy=(0,0))
+        self.s_min_anno = self.ax.annotate("", xytext=(0,0), xy=(0,0))
+        self.v_max_anno = self.ax.annotate("", xytext=(0,0), xy=(0,0))
+        self.v_min_anno = self.ax.annotate("", xytext=(0,0), xy=(0,0))
+        self.a_max_anno = self.ax.annotate("", xytext=(0,0), xy=(0,0))
+        self.a_min_anno = self.ax.annotate("", xytext=(0,0), xy=(0,0))
+        self.j_max_anno = self.ax.annotate("", xytext=(0,0), xy=(0,0))
+        self.j_min_anno = self.ax.annotate("", xytext=(0,0), xy=(0,0))
+        #self.dj_max_anno = self.ax.annotate("", xytext=(0,0), xy=(0,0))
+        #self.dj_min_anno = self.ax.annotate("", xytext=(0,0), xy=(0,0))
+        
+        self.x = np.linspace(0, 1, self.npoints)
+        
+        if not self.inited:
+            self.ax.legend()
+            self.inited = True
+        
+        self.artists = ( self.s_line, 
+                         self.v_line, 
+                         self.a_line, 
+                         self.j_line,
+                         #self.dj_line,
+                         self.s_max_anno ,
+                         self.s_min_anno ,
+                         self.v_max_anno ,
+                         self.v_min_anno ,
+                         self.a_max_anno ,
+                         self.a_min_anno ,
+                         self.j_max_anno ,
+                         self.j_min_anno ,
+                         #self.dj_max_anno ,
+                         #self.dj_min_anno ,
+                     )
+                     
+        return self.artists
+
+    
+    def loop(self, frame_index):
+        self.plot()
+        return self.artists
+    
+    def show(self):
+        from matplotlib.animation import FuncAnimation
+        self.fig, self.ax = plt.subplots()
+        self.anim = FuncAnimation(self.fig, self.loop, frames=np.arange(1), init_func=self.init_anim,
+                                  interval=5, 
+                                  blit=True)
+        plt.show()
+
+        
+        
+        
+          
 def test_2():
     pvp = PolyVelProfile()
+    
+    plotter = Plotter(pvp.var, pvp.static_param)
+    
+    thrd = start_daemon(lambda:pvp.run(pvp.var))
+    
+    plotter.show()
     
 test_2()
 

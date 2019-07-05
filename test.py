@@ -1168,6 +1168,7 @@ class iter(object):
         
         temp_param = self.param
         
+        print("[%d] +++: da=%32.30lf  dv=%32.30lf"%(counter, da,dv))
         while (np.abs(da)>1e-13 or np.abs(dv)>1e-13) and 1:
             print("[%d] before: da=%32.30lf  dv=%32.30lf"%(counter, da,dv))
             a_dx, param = f_fa_dx(temp_param)
@@ -1232,7 +1233,8 @@ class iter(object):
         counter = 0
         f1, f2, f3, f4, f5 = fs
             
-        while(any(map(lambda x:x>0 and np.abs(x)>1e-13,fs))):
+        while ( any(map(lambda x:x>0 and np.abs(x)>1e-13, fs)) or 
+                any(map(lambda x:np.abs(x)>1e-13, [dv, da])) ):
             counter+=1
             clr.print_green_text("[%d] loop()  fs=%s"%(counter, repr(fs)))
             if(f5>0 and np.abs(f5)>1e-13):
@@ -1269,6 +1271,49 @@ class iter(object):
                 Ts = get_powers(T, 6)
                 print("[%d] [f5] dp5=%32.30lf  dp4=%32.30lf  dT=%32.30lf"%(counter, dp5, dp4, dT))
                 print("[%d] [f5] after: da=%32.30lf  dv=%32.30lf  f5=%32.30lf"%(counter, da,dv,f5))
+                
+            elif(np.abs(dv) > 1e-13 or np.abs(da) > 1e-13 ):
+                print("[%d] [dva] before: da=%32.30lf  dv=%32.30lf"%(counter, da,dv))
+                a_dx, param = f_fa_dx(temp_param)
+                v_dx, param = f_fv_dx(temp_param)
+                
+                dM = np.array( [ [  3 * Ts[4],  4 * Ts[3] ] ,
+                                 [ 10 * Ts[3], 12 * Ts[2] ] ] )
+                                
+                dva = np.array( [ dv ,
+                                  da ] )
+                                  
+                print(dM, dva)
+                                  
+                dp5, dp4 = np.linalg.solve(dM, -dva)
+               
+                print(dp5, dp4)
+                
+                p5 = p5 + dp5
+                p4 = p4 + dp4
+                
+                temp_param = p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5, ni
+
+                da_before = da
+                dv_before = dv
+                
+                da, param = f_fa(temp_param, asrt=False)
+                dv, param = f_fv(temp_param, asrt=False)
+                f1, param = f_f1(temp_param, asrt=False)
+                f2, param = f_f2(temp_param, asrt=False)
+                f3, param = f_f3(temp_param, asrt=False)
+                f4, param = f_f4(temp_param, asrt=False)
+                f5, param = f_f5(temp_param, asrt=False)
+                
+                dda = np.abs(da) - np.abs(da_before)
+                ddv = np.abs(dv) - np.abs(dv_before)
+                
+                
+                print("[%d] [f5] dp5=%32.30lf  dp4=%32.30lf  dT=%32.30lf"%(counter, dp5, dp4, dT))
+                print("---- [%d] change: dda=%32.30lf  ddv=%32.30lf"%(counter, dda,ddv))
+                print("[%d] [dva] after: da=%32.30lf  dv=%32.30lf"%(counter, da,dv))
+                
+                
             temp_param = p5, p4, lv, la, lj, l1, l2, l3, l4, l5, Ts, m1, m2, m3, m4, m5, ni
         else:
             clr.print_blue_text("[%d] loop()  fs=%s"%(counter, repr(fs)))
